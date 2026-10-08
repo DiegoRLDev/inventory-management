@@ -1,0 +1,11 @@
+@Billing.Api_HostAddress = http://localhost:5082
+
+GET {{Billing.Api_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{Billing.Api_HostAddress}}/api/invoices
+Accept: application/json
+
+###
