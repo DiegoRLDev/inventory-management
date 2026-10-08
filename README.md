@@ -1,178 +1,175 @@
 # Inventory Management
 
-Sistema mínimo de emissão de notas fiscais com dois microsserviços: **Estoque** e **Faturamento**.
+Aplicação para cadastrar produtos, controlar saldo de estoque e emitir notas. O estoque e as notas ficam em serviços separados. A baixa de estoque é síncrona; o aviso de nota fechada segue por mensagem.
 
-O fechamento da nota depende de uma baixa de estoque síncrona. RabbitMQ entra só depois do sucesso, para auditoria em log.
+A nota desta versão registra produto e quantidade. Não há preço, cliente, imposto nem pagamento.
+
+## Funcionalidades
+
+- Cadastrar e listar produtos, com código único, descrição e saldo inicial.
+- Criar uma nota aberta com itens copiados do cadastro.
+- Emitir a nota: o saldo é baixado e a nota passa de `Open` para `Closed`.
+- Recusar baixa quando o produto não existe ou o saldo não cobre a quantidade.
+- Ignorar uma segunda baixa da mesma nota, sem alterar o saldo de novo.
+- Publicar `InvoiceClosedEvent` na fila `invoice.closed` depois do fechamento.
+- Registrar esse evento no log do `Audit.Worker`.
+- Consultar produtos e notas, emitir e imprimir a nota fechada no navegador.
+
+Não há tela nem endpoint para editar produto, aumentar estoque ou cancelar nota.
 
 ## Arquitetura
 
-```
-Angular
-   |
-   +--> Inventory.Api --> PostgreSQL
-   |
-   +--> Billing.Api --> PostgreSQL
-             |
-             +--> REST --> Inventory.Api
-             |
-             +--> RabbitMQ --> Audit.Worker
+| Componente | Papel |
+|---|---|
+| Frontend Angular | Cadastro, notas e impressão no navegador |
+| `Inventory.Api` | Produtos, saldo e baixa |
+| `Billing.Api` | Notas, emissão e publicação do evento |
+| `Audit.Worker` | Consome `invoice.closed` e escreve no log |
+| PostgreSQL | Um banco para o estoque e outro para as notas |
+| RabbitMQ | Fila durável `invoice.closed` |
+| Docker Compose | Sobe bancos, RabbitMQ, APIs e worker |
+
+O frontend não entra no Compose. `Billing.Api` não acessa o banco do estoque: chama `POST /api/stock/debit`.
+
+```mermaid
+flowchart LR
+  ui[Angular]
+  inventory[Inventory.Api]
+  billing[Billing.Api]
+  stockDb[(PostgreSQL estoque)]
+  billingDb[(PostgreSQL notas)]
+  queue[RabbitMQ]
+  worker[Audit.Worker]
+
+  ui -->|produtos| inventory
+  ui -->|notas| billing
+  inventory --> stockDb
+  billing --> billingDb
+  billing -->|baixa síncrona| inventory
+  billing -->|invoice.closed| queue
+  queue --> worker
 ```
 
-Cada serviço tem o próprio banco. Billing não acessa o banco do Inventory.
+Na emissão, a ordem é: Angular chama `Billing.Api`, que chama `Inventory.Api`. Só depois da baixa aceita a nota fica `Closed` e o evento é publicado. Se a baixa falha, a nota continua `Open` e nenhum evento sai.
+
+Mais detalhes de retry, idempotência e erros estão em [docs/TECHNICAL-DETAILS.md](docs/TECHNICAL-DETAILS.md).
 
 ## Tecnologias
 
-- .NET 8, ASP.NET Core Web API, EF Core, PostgreSQL
-- RabbitMQ.Client
-- Angular 19.2.25, Angular Material, Reactive Forms
+Versões conferidas nos arquivos do projeto:
 
-## Estrutura
-
-```
-InventoryManagement.sln
-src/Inventory.Api
-src/Billing.Api
-src/Audit.Worker
-frontend/inventory-management
-tests/InventoryManagement.Tests
-docker-compose.yml
-docs/TECHNICAL-DETAILS.md
-```
+- .NET 8 e ASP.NET Core
+- Entity Framework Core 8, com `Npgsql.EntityFrameworkCore.PostgreSQL` 8.0.11
+- PostgreSQL 16
+- `RabbitMQ.Client` 7.2.2 e RabbitMQ 3 com management
+- Angular 19.2.25, Angular CLI 19.2.27 e Angular Material 19.2.19
+- xUnit 2.5.3, com EF Core InMemory 8.0.11 nos testes
+- Docker Compose
 
 ## Pré-requisitos
 
 - .NET 8 SDK
-- Node.js 20+ (para o Angular)
-- Docker Desktop
-- `dotnet-ef` (`dotnet tool install --global dotnet-ef`)
+- Node.js 20 ou superior, para o Angular
+- Docker Desktop, ou outro Docker com Compose
+- `dotnet-ef` 8.0.11, a mesma linha do EF Core do projeto: `dotnet tool install --global dotnet-ef --version 8.0.11`
 
 ## Portas
 
-| Serviço | Porta |
+| Serviço | Endereço |
 |---|---|
-| Inventory.Api | 5081 |
-| Billing.Api | 5082 |
-| Angular | 4200 |
-| PostgreSQL Estoque | 5433 |
-| PostgreSQL Faturamento | 5434 |
-| RabbitMQ AMQP | 5672 |
-| RabbitMQ Management | 15672 (guest/guest) |
+| Inventory.Api | http://localhost:5081 |
+| Billing.Api | http://localhost:5082 |
+| Angular | http://localhost:4200 |
+| PostgreSQL do estoque | localhost:5433 |
+| PostgreSQL das notas | localhost:5434 |
+| RabbitMQ | localhost:5672 |
+| RabbitMQ Management | http://localhost:15672 |
+
+## Credenciais locais
+
+Os usuários e senhas do repositório são padrões descartáveis de desenvolvimento, não credenciais de produção:
+
+| Uso | Usuário | Senha |
+|---|---|---|
+| PostgreSQL do estoque | `inventory` | `inventory` |
+| PostgreSQL das notas | `billing` | `billing` |
+| RabbitMQ | `guest` | `guest` |
+
+Eles estão em `appsettings.json` e no `docker-compose.yml` para o projeto subir depois do clone. Não use esses valores fora da máquina local.
 
 ## Como executar
 
-### 1. Infraestrutura
+Os comandos partem da raiz do repositório. As APIs não aplicam migrations na inicialização.
 
-```powershell
+### 1. Bancos e RabbitMQ
+
+```shell
 docker compose up -d postgres-inventory postgres-billing rabbitmq
 ```
 
 ### 2. Migrations
 
-As APIs **não** aplicam migrations sozinhas. Rodar sempre que houver migration pendente.
+Rode no host, com os bancos já aceitando conexão nas portas 5433 e 5434:
 
-Inventory hoje tem duas: `InitialCreate` e `AddProcessedDebit`.
-
-```powershell
+```shell
 dotnet ef database update --project src/Inventory.Api
 dotnet ef database update --project src/Billing.Api
 ```
 
-Os comandos usam as connection strings de `appsettings.json` (`localhost:5433` e `localhost:5434`).
+O estoque tem `InitialCreate` e `AddProcessedDebit`. As notas têm `InitialCreate`.
 
-### 3. Backend (Docker ou local)
+### 3. APIs e worker
 
-**Docker (infra + APIs + worker):**
+No Docker, depois das migrations:
 
-```powershell
-docker compose up -d --build
+```shell
+docker compose up -d --build inventory-api billing-api audit-worker
 ```
 
-**Ou local:**
+Ou no host, em terminais separados:
 
-```powershell
-dotnet run --project src/Inventory.Api --urls http://localhost:5081
-dotnet run --project src/Billing.Api --urls http://localhost:5082
+```shell
+dotnet run --project src/Inventory.Api
+dotnet run --project src/Billing.Api
 dotnet run --project src/Audit.Worker
 ```
 
-### 4. Angular
+As portas 5081 e 5082 vêm de `launchSettings.json`.
 
-Não está no Docker.
+### 4. Frontend
 
-```powershell
+```shell
 cd frontend/inventory-management
 npm install
 npx ng serve
 ```
 
-Abrir http://localhost:4200
+Abra http://localhost:4200.
 
-## Fluxo de emissão
-
-1. Angular chama `POST /api/invoices/{id}/issue` no Billing.
-2. Billing verifica se a nota está `Open`.
-3. Billing chama `POST /api/stock/debit` no Inventory (REST síncrono, timeout 5s).
-4. Se a baixa ok: nota vira `Closed` e Billing publica `InvoiceClosedEvent`.
-5. Se Inventory recusar ou estiver fora após as tentativas: nota permanece `Open` e o Angular mostra o erro.
-
-## Idempotência e retry
-
-A baixa usa o `InvoiceId` como chave de idempotência (`ProcessedDebits`, UNIQUE).
-
-**Por quê:** o Inventory pode baixar o estoque e a resposta HTTP se perder. Sem essa chave, um retry do Billing baixaria de novo.
-
-**Retry só depois da idempotência:** repetir a chamada ficou seguro. O Billing tenta até 3 vezes, com 200 ms entre elas, só em falha transitória:
-
-- `HttpRequestException`
-- timeout
-- HTTP 5xx
-
-**Não repetem** (regra de negócio): 400, 404, 409, 422 (estoque insuficiente, produto inexistente, etc.).
-
-## Como demonstrar falha do Inventory
-
-Com uma nota `Open`:
-
-```powershell
-docker compose stop inventory-api
-```
-
-Emitir a nota. O Billing tenta até 3 vezes (timeout 5s); a tela pode ficar uns segundos no spinner. Isso não é travamento.
-
-Esperado: HTTP 503, nota continua `Open`, estoque inalterado.
-
-```powershell
-docker compose start inventory-api
-```
-
-## Como demonstrar idempotência
-
-Depois de emitir uma nota (`Closed`), repetir a baixa com o mesmo `invoiceId`:
-
-```powershell
-POST http://localhost:5081/api/stock/debit
-```
-
-Corpo: o mesmo `invoiceId` e os mesmos itens. Esperado: HTTP 200 e o saldo **não** cai de novo.
-
-## RabbitMQ e Audit.Worker
-
-Depois da nota `Closed`, Billing publica na fila `invoice.closed` (exchange default).
-
-O worker loga: `Invoice {número} closed at {data}`.
-
-Não persiste auditoria. Se o RabbitMQ estiver fora, a nota **já fechada permanece Closed** (sem Outbox).
+Para ver o log do worker: `docker compose logs -f audit-worker`, ou o console do `dotnet run` do `Audit.Worker`.
 
 ## Testes
 
-```powershell
+A suíte automatizada cobre o backend: baixa de estoque, inclusive a repetição da mesma nota, e emissão de notas. Não há testes automatizados do Angular; o projeto não contém arquivos `*.spec.ts`.
+
+```shell
 dotnet test InventoryManagement.sln
 ```
 
-Evento no worker e UI Angular são testes manuais.
+O worker e a interface ficam para verificação manual.
 
-## Trade-offs
+## Decisões e limitações
 
-- Sem Outbox: se o RabbitMQ cair depois do `SaveChanges`, a nota fica `Closed` e o evento pode se perder.
-- Sem concorrência avançada de estoque: duas baixas simultâneas de invoices **diferentes** no mesmo saldo não foram tratadas.
-- Numeração da nota usa sequence PostgreSQL `invoice_numbers` (`nextval`), não `MAX+1`.
+- A baixa usa o `InvoiceId` como chave única. Repetir a mesma nota não baixa o estoque outra vez.
+- O `Billing.Api` tenta a baixa até três vezes, com 200 ms entre elas, só em falha transitória.
+- Não há Outbox. Se o RabbitMQ falhar depois do fechamento, a nota permanece `Closed` e o evento pode se perder.
+- Duas notas diferentes baixando o mesmo saldo ao mesmo tempo não são tratadas.
+- O worker só escreve log. Não guarda trilha de auditoria.
+- O número da nota vem da sequence PostgreSQL `invoice_numbers`.
+
+## Roadmap
+
+- Alinhar a linguagem do domínio: hoje a emissão convive com os nomes `Billing` e `Closed`.
+- Tornar a publicação do evento confiável, com Outbox.
+- Acrescentar testes automatizados do frontend.
+- Documentar a API com OpenAPI e tratar erros de forma uniforme.

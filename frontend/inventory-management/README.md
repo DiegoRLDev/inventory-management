@@ -1,5 +1,7 @@
 # Inventory Management
 
+Interface Angular da aplicação. A execução do sistema completo, incluindo APIs, worker e bancos, está no [README da raiz](../../README.md).
+
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.2.27.
 
 ## Development server

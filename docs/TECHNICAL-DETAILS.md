@@ -52,4 +52,4 @@ Retry só existe porque a baixa é idempotente pelo `InvoiceId`. Repete apenas f
 
 Não há middleware global de exceção além disso.
 
-**RabbitMQ.Client 7.2:** fila durável `invoice.closed`, exchange default. Publicação só depois do commit `Closed`. Worker consome, loga e dá ack. Sem Outbox, DLQ ou persistência de auditoria.
+**RabbitMQ.Client 7.2.2:** fila durável `invoice.closed`, exchange default. Publicação só depois do commit `Closed`. Worker consome, loga e dá ack. Sem Outbox, DLQ ou persistência de auditoria.
