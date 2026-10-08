@@ -1,0 +1,11 @@
+form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+table {
+  width: 100%;
+}

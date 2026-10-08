@@ -1,0 +1,50 @@
+<section>
+  <h1>Notas Fiscais</h1>
+
+  <table mat-table [dataSource]="invoices">
+    <ng-container matColumnDef="number">
+      <th mat-header-cell *matHeaderCellDef>Número</th>
+      <td mat-cell *matCellDef="let invoice">{{ invoice.number }}</td>
+    </ng-container>
+    <ng-container matColumnDef="status">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let invoice">{{ invoice.status === 'Open' ? 'Aberta' : 'Fechada' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="createdAt">
+      <th mat-header-cell *matHeaderCellDef>Criação</th>
+      <td mat-cell *matCellDef="let invoice">{{ invoice.createdAt | date:'short' }}</td>
+    </ng-container>
+    <ng-container matColumnDef="items">
+      <th mat-header-cell *matHeaderCellDef>Itens</th>
+      <td mat-cell *matCellDef="let invoice">
+        @for (item of invoice.items; track item.productId + item.productCode + $index) {
+          <div>{{ item.productCode }} — {{ item.productDescription }} ({{ item.quantity }})</div>
+        }
+      </td>
+    </ng-container>
+    <ng-container matColumnDef="actions">
+      <th mat-header-cell *matHeaderCellDef></th>
+      <td mat-cell *matCellDef="let invoice">
+        @if (invoice.status === 'Open') {
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            [disabled]="issuingId === invoice.id"
+            (click)="issue(invoice)">
+            @if (issuingId === invoice.id) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              Emitir
+            }
+          </button>
+        } @else {
+          <button mat-stroked-button type="button" (click)="print(invoice)">Imprimir</button>
+        }
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="columns"></tr>
+    <tr mat-row *matRowDef="let row; columns: columns"></tr>
+  </table>
+</section>

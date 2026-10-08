@@ -1,0 +1,15 @@
+mat-toolbar nav {
+  display: flex;
+  gap: 4px;
+  margin-left: 24px;
+}
+
+mat-toolbar a.active {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+main {
+  padding: 24px;
+  max-width: 1080px;
+  margin: 0 auto;
+}

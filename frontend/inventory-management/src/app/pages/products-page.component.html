@@ -1,0 +1,40 @@
+<section>
+  <h1>Produtos</h1>
+
+  <form [formGroup]="form" (ngSubmit)="save()">
+    <mat-form-field appearance="outline">
+      <mat-label>Código</mat-label>
+      <input matInput formControlName="code">
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Descrição</mat-label>
+      <input matInput formControlName="description">
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Saldo</mat-label>
+      <input matInput type="number" formControlName="balance">
+    </mat-form-field>
+
+    <button mat-flat-button color="primary" type="submit" [disabled]="saving">Cadastrar</button>
+  </form>
+
+  <table mat-table [dataSource]="products">
+    <ng-container matColumnDef="code">
+      <th mat-header-cell *matHeaderCellDef>Código</th>
+      <td mat-cell *matCellDef="let product">{{ product.code }}</td>
+    </ng-container>
+    <ng-container matColumnDef="description">
+      <th mat-header-cell *matHeaderCellDef>Descrição</th>
+      <td mat-cell *matCellDef="let product">{{ product.description }}</td>
+    </ng-container>
+    <ng-container matColumnDef="balance">
+      <th mat-header-cell *matHeaderCellDef>Saldo</th>
+      <td mat-cell *matCellDef="let product">{{ product.balance }}</td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="columns"></tr>
+    <tr mat-row *matRowDef="let row; columns: columns"></tr>
+  </table>
+</section>

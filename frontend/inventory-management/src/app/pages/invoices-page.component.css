@@ -1,0 +1,7 @@
+table {
+  width: 100%;
+}
+
+button mat-spinner {
+  display: inline-block;
+}
