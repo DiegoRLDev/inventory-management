@@ -1,0 +1,22 @@
+@Inventory.Api_HostAddress = http://localhost:5081
+
+GET {{Inventory.Api_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{Inventory.Api_HostAddress}}/api/products
+Accept: application/json
+
+###
+
+POST {{Inventory.Api_HostAddress}}/api/products
+Content-Type: application/json
+
+{
+  "code": "P001",
+  "description": "Parafuso M6",
+  "balance": 10
+}
+
+###
