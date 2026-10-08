@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+**/.vs/
+frontend/
+tests/
+**/node_modules/
+**/.git

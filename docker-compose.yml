@@ -1,0 +1,100 @@
+services:
+  postgres-inventory:
+    image: postgres:16
+    container_name: inventory-management-postgres-inventory
+    environment:
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: inventory
+      POSTGRES_DB: inventory
+    ports:
+      - "5433:5432"
+    volumes:
+      - inventory-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory -d inventory"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-billing:
+    image: postgres:16
+    container_name: inventory-management-postgres-billing
+    environment:
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: billing
+      POSTGRES_DB: billing
+    ports:
+      - "5434:5432"
+    volumes:
+      - billing-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing -d billing"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: inventory-management-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  inventory-api:
+    build:
+      context: .
+      dockerfile: src/Inventory.Api/Dockerfile
+    container_name: inventory-management-inventory-api
+    depends_on:
+      postgres-inventory:
+        condition: service_healthy
+    ports:
+      - "5081:8080"
+    environment:
+      ConnectionStrings__Inventory: Host=postgres-inventory;Port=5432;Database=inventory;Username=inventory;Password=inventory
+
+  billing-api:
+    build:
+      context: .
+      dockerfile: src/Billing.Api/Dockerfile
+    container_name: inventory-management-billing-api
+    depends_on:
+      postgres-billing:
+        condition: service_healthy
+      inventory-api:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "5082:8080"
+    environment:
+      ConnectionStrings__Billing: Host=postgres-billing;Port=5432;Database=billing;Username=billing;Password=billing
+      Inventory__BaseUrl: http://inventory-api:8080/
+      Inventory__TimeoutSeconds: "5"
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest
+
+  audit-worker:
+    build:
+      context: .
+      dockerfile: src/Audit.Worker/Dockerfile
+    container_name: inventory-management-audit-worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest
+
+volumes:
+  inventory-data:
+  billing-data:
